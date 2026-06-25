@@ -27,6 +27,10 @@ pub struct FileMeta {
     pub encoding: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub binary: Option<bool>,
+    /// Coarse content category for quick agent decisions: `text`, `image`,
+    /// `audio`, `video`, `archive`, `binary`, or `data`. Absent for non-files.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, serde::Serialize, PartialEq, Eq)]
@@ -66,6 +70,7 @@ impl FileMeta {
             mime: None,
             encoding: None,
             binary: None,
+            category: None,
         };
 
         if paths_only || kind != EntryKind::File {
@@ -102,11 +107,50 @@ impl FileMeta {
             (None, Some(true))
         };
 
-        meta.mime = mime;
+        meta.mime = mime.clone();
         meta.encoding = encoding;
         meta.binary = binary;
+        meta.category = Some(categorize(mime.as_deref(), binary.unwrap_or(false)).to_string());
         meta
     }
+}
+
+/// Derive a coarse content category from the detected mime and binary flag.
+/// Used as the `mime_hint` column so agents can filter ("just the images")
+/// without parsing mime types themselves.
+///
+/// Recognised media/archive types win over the raw `binary` flag — a PNG is an
+/// `image` even though it contains NUL bytes. `binary` is reserved for opaque
+/// blobs that are neither text nor a known media/archive format.
+fn categorize(mime: Option<&str>, binary: bool) -> &'static str {
+    match mime {
+        Some(m) if m.starts_with("image/") => "image",
+        Some(m) if m.starts_with("audio/") => "audio",
+        Some(m) if m.starts_with("video/") => "video",
+        Some(m) if is_archive_mime(m) => "archive",
+        Some(m) if m.starts_with("text/") || is_text_mime(m) => "text",
+        None if !binary => "text",
+        _ if binary => "binary",
+        _ => "data",
+    }
+}
+
+fn is_archive_mime(mime: &str) -> bool {
+    matches!(
+        mime,
+        "application/zip"
+            | "application/gzip"
+            | "application/x-gzip"
+            | "application/x-tar"
+            | "application/x-xz"
+            | "application/zstd"
+            | "application/x-zstd"
+            | "application/x-bzip2"
+            | "application/x-7z-compressed"
+            | "application/x-rar-compressed"
+            | "application/java-archive"
+            | "application/x-iso9660-image"
+    )
 }
 
 fn is_text_mime(mime: &str) -> bool {
