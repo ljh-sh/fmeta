@@ -24,19 +24,28 @@ fn walks_and_reports_metadata() {
         "binary.bin missing: {paths:?}"
     );
 
-    let hello = metas.iter().find(|m| m.path.ends_with("hello.txt")).unwrap();
+    let hello = metas
+        .iter()
+        .find(|m| m.path.ends_with("hello.txt"))
+        .unwrap();
     assert_eq!(hello.kind, fmeta::detect::EntryKind::File);
     assert_eq!(hello.size, Some(b"hello world\n".len() as u64));
     assert_eq!(hello.encoding.as_deref(), Some("UTF-8"));
     assert_eq!(hello.binary, Some(false));
 
-    let bin = metas.iter().find(|m| m.path.ends_with("binary.bin")).unwrap();
+    let bin = metas
+        .iter()
+        .find(|m| m.path.ends_with("binary.bin"))
+        .unwrap();
     // NUL byte => binary, no encoding reported.
     assert_eq!(bin.binary, Some(true));
     assert!(bin.encoding.is_none());
 
     let empty = metas.iter().find(|m| m.path.ends_with("empty")).unwrap();
-    assert!(empty.encoding.is_none(), "empty file should have no encoding");
+    assert!(
+        empty.encoding.is_none(),
+        "empty file should have no encoding"
+    );
     assert!(empty.mime.is_none());
 }
 
@@ -57,7 +66,7 @@ fn respects_max_depth_zero() {
         sniff: 8192,
         paths_only: false,
     };
-    let entries = fmeta::traverse::walk(&[root.clone()], &opts);
+    let entries = fmeta::traverse::walk(std::slice::from_ref(&root), &opts);
     assert_eq!(entries.len(), 1, "depth 0 must visit only the root");
 }
 
