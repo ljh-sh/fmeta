@@ -32,6 +32,7 @@ fn walks_and_reports_metadata() {
     assert_eq!(hello.size, Some(b"hello world\n".len() as u64));
     assert_eq!(hello.encoding.as_deref(), Some("UTF-8"));
     assert_eq!(hello.binary, Some(false));
+    assert_eq!(hello.category.as_deref(), Some("text"));
 
     let bin = metas
         .iter()
@@ -40,6 +41,7 @@ fn walks_and_reports_metadata() {
     // NUL byte => binary, no encoding reported.
     assert_eq!(bin.binary, Some(true));
     assert!(bin.encoding.is_none());
+    assert_eq!(bin.category.as_deref(), Some("binary"));
 
     let empty = metas.iter().find(|m| m.path.ends_with("empty")).unwrap();
     assert!(
@@ -61,6 +63,7 @@ fn respects_max_depth_zero() {
         paths: vec![root.clone()],
         max_depth: 0,
         all: false,
+        no_ignore: false,
         follow_links: false,
         format: fmeta::cli::OutputFormat::Table,
         sniff: 8192,
@@ -75,6 +78,7 @@ fn collect(root: &Path) -> Vec<fmeta::detect::FileMeta> {
         paths: vec![root.to_path_buf()],
         max_depth: usize::MAX,
         all: true,
+        no_ignore: false,
         follow_links: false,
         format: fmeta::cli::OutputFormat::Table,
         sniff: 8192,
@@ -94,6 +98,74 @@ fn collect(root: &Path) -> Vec<fmeta::detect::FileMeta> {
             )
         })
         .collect()
+}
+
+/// `.gitignore` patterns filter the default walk; `--no-ignore` restores them.
+#[test]
+fn gitignore_filters_by_default() {
+    let tmp = tempfile_dir();
+    let root = tmp.join("root");
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join(".gitignore"), "secret.txt\n").unwrap();
+    fs::write(root.join("secret.txt"), b"top secret\n").unwrap();
+    fs::write(root.join("keep.txt"), b"keep me\n").unwrap();
+
+    let opts = fmeta::cli::Cli {
+        paths: vec![root.clone()],
+        max_depth: usize::MAX,
+        all: false,
+        no_ignore: false,
+        follow_links: false,
+        format: fmeta::cli::OutputFormat::Table,
+        sniff: 8192,
+        paths_only: false,
+    };
+    let paths: Vec<String> = fmeta::traverse::walk(std::slice::from_ref(&root), &opts)
+        .into_iter()
+        .map(|e| e.path.to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        !paths.iter().any(|p| p.ends_with("secret.txt")),
+        "secret.txt should be gitignored away: {paths:?}"
+    );
+    assert!(paths.iter().any(|p| p.ends_with("keep.txt")));
+
+    let mut no_ignore = opts.clone();
+    no_ignore.no_ignore = true;
+    let paths2: Vec<String> = fmeta::traverse::walk(std::slice::from_ref(&root), &no_ignore)
+        .into_iter()
+        .map(|e| e.path.to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        paths2.iter().any(|p| p.ends_with("secret.txt")),
+        "secret.txt should appear with --no-ignore: {paths2:?}"
+    );
+}
+
+/// TSV output: exactly six tab-separated columns, path last.
+#[test]
+fn tsv_has_six_columns_path_last() {
+    let tmp = tempfile_dir();
+    let root = tmp.join("root");
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("hello.txt"), b"hello world\n").unwrap();
+
+    let metas = collect(&root);
+    let mut buf = Vec::new();
+    fmeta::output::render_to(&mut buf, &metas, fmeta::cli::OutputFormat::Tsv).unwrap();
+    let out = String::from_utf8(buf).unwrap();
+    assert!(!out.is_empty(), "tsv should emit rows");
+
+    for line in out.lines() {
+        let cols: Vec<&str> = line.split('\t').collect();
+        assert_eq!(cols.len(), 6, "tsv row must have 6 columns: {line:?}");
+        // `path` is always the last column.
+        assert!(
+            cols.last().unwrap().ends_with("hello.txt") || cols.last().unwrap().ends_with("root"),
+            "last column must be a path: {:?}",
+            cols.last()
+        );
+    }
 }
 
 fn tempfile_dir() -> std::path::PathBuf {

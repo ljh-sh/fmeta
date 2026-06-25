@@ -5,8 +5,9 @@ use clap::Parser;
 /// fmeta — find alternative that emits files with rich metadata.
 ///
 /// Walks one or more roots and prints each file alongside detected metadata
-/// columns (size, mime type, text encoding). Output is available as a plain
-/// table (default) or as JSON.
+/// columns (size, kind, encoding, mime, mime hint). Output is TSV by default
+/// (agent/pipeline friendly); `--format table` for a human-aligned table or
+/// `--format json` for JSON Lines.
 #[derive(Debug, Clone, Parser)]
 #[command(
     name = "fmeta",
@@ -27,6 +28,10 @@ pub struct Cli {
     #[arg(short = 'a', long)]
     pub all: bool,
 
+    /// Disable `.gitignore` / `.ignore` filtering (hidden files still controlled by -a).
+    #[arg(long)]
+    pub no_ignore: bool,
+
     /// Follow symbolic links.
     #[arg(short = 'L', long = "follow")]
     pub follow_links: bool,
@@ -36,7 +41,7 @@ pub struct Cli {
         short = 'o',
         long = "format",
         value_enum,
-        default_value_t = OutputFormat::Table,
+        default_value_t = OutputFormat::Tsv,
     )]
     pub format: OutputFormat,
 
@@ -52,7 +57,9 @@ pub struct Cli {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum OutputFormat {
-    /// Human readable aligned table (default).
+    /// Tab-separated values, one row per file (default; for agents/pipelines).
+    Tsv,
+    /// Human-readable aligned table.
     Table,
     /// One JSON object per line (JSON Lines / NDJSON).
     Json,

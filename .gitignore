@@ -4,3 +4,6 @@
 *~
 .DS_Store
 **/.release-artifacts/
+
+# per-task worktrees (ljhsh-worktree-per-task)
+.worktrees/
