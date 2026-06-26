@@ -125,12 +125,34 @@ Fields:
 | `--sniff BYTES`     | bytes read per file for detection (default: 8192)        |
 | `--paths-only`      | skip detection, emit paths only                          |
 | `--fast`            | bounded walk: skip whole-file extractors (PDF pages, audio) — the default is "deep" |
+| `--index [PATH...]` | **index mode**: walk + upsert metadata into the index DB (incremental via mtime) |
+| `--sql SQL`         | **query mode**: run raw SQL over the index DB, print rows as TSV |
+| `--db PATH`         | override the index DB path (default `~/.local/data/ljh-sh/fmeta/sqlite.db`) |
+
+## Database mode
+
+fmeta is also a **file metadata database**. Build an index of a tree, then query it with raw SQL — no re-walk, no `jq`.
+
+```sh
+# Index a tree into the default DB (~/.local/data/ljh-sh/fmeta/sqlite.db).
+fmeta --index path/to/dir
+
+# Re-indexing is incremental: files whose mtime is unchanged are skipped.
+fmeta --index path/to/dir      # -> "indexed 3 (cached 2594)"
+
+# Query with raw SQL (TSV output).
+fmeta --sql "SELECT path,size FROM files WHERE category='image' ORDER BY size DESC LIMIT 20"
+fmeta --sql "SELECT mime,count(*) FROM files GROUP BY mime ORDER BY 2 DESC"
+fmeta --sql "SELECT path,pages FROM files WHERE pages > 100"
+```
+
+The schema is the `files` table — one row per indexed file (absolute path as primary key), columns mirror the fields above (`size`, `mime`, `category`, `encoding`, `width`, `height`, `duration_secs`, `pages`, `tables`, `entries`, `mtime`, `ctime`, …; `exif`/`tags` as JSON text). WAL mode enables concurrent readers. Use `--db PATH` to target a different DB.
 
 ## Scope
 
-In scope: directory traversal (gitignore-aware), size, mime detection, text encoding detection, coarse category hint, image dimensions + EXIF, PDF page count, audio duration + tags, video dimensions + duration, TSV + table + JSON output.
+In scope: directory traversal (gitignore-aware), rich per-file metadata (size/mime/encoding/image dims+EXIF/PDF pages/audio tags+duration/video dims+duration/Office props/archives/EPUB/SQLite tables/font/CSV cols/mtime/ctime), TSV + table + JSON output, **and a global SQLite index (`--index`/`--sql`)**.
 
-Out of scope (future): Office document properties (tracked in #9), mkv/webm video, network and remote files. See [docs/design.md](docs/design.md) for the roadmap.
+Out of scope (future): `--prune` (drop deleted files from index), parallel traversal, mkv/webm, network/remote files, parquet (→ duckdb). See [docs/design.md](docs/design.md) for the roadmap.
 
 ## License
 

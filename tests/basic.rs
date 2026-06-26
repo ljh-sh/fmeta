@@ -69,6 +69,9 @@ fn respects_max_depth_zero() {
         sniff: 8192,
         paths_only: false,
         fast: false,
+        index: false,
+        sql: None,
+        db: None,
     };
     let entries = fmeta::traverse::walk(std::slice::from_ref(&root), &opts);
     assert_eq!(entries.len(), 1, "depth 0 must visit only the root");
@@ -85,6 +88,9 @@ fn collect(root: &Path) -> Vec<fmeta::detect::FileMeta> {
         sniff: 8192,
         paths_only: false,
         fast: false,
+        index: false,
+        sql: None,
+        db: None,
     };
     let entries = fmeta::traverse::walk(&[root.to_path_buf()], &opts);
     entries
@@ -123,6 +129,9 @@ fn gitignore_filters_by_default() {
         sniff: 8192,
         paths_only: false,
         fast: false,
+        index: false,
+        sql: None,
+        db: None,
     };
     let paths: Vec<String> = fmeta::traverse::walk(std::slice::from_ref(&root), &opts)
         .into_iter()
@@ -385,6 +394,49 @@ fn font_family() {
     assert_eq!(font.mime.as_deref(), Some("application/font-sfnt"));
     let tags = font.tags.as_ref().expect("font tags");
     assert_eq!(tags.get("family"), Some(&"Fmeta Test".to_string()));
+}
+
+/// DB index + raw-SQL query (db module: open/upsert/run_query).
+#[test]
+fn db_index_and_query() {
+    let tmp = tempfile_dir();
+    let root = tmp.join("root");
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("hello.txt"), b"hello world\n").unwrap();
+    fs::write(root.join("pic.png"), b"\x89PNG\r\n\x1a\n").unwrap();
+
+    let opts = fmeta::cli::Cli {
+        paths: vec![root.clone()],
+        max_depth: usize::MAX,
+        all: true,
+        no_ignore: false,
+        follow_links: false,
+        format: fmeta::cli::OutputFormat::Table,
+        sniff: 8192,
+        paths_only: false,
+        fast: false,
+        index: false,
+        sql: None,
+        db: None,
+    };
+    let conn = fmeta::db::open(&tmp.join("idx.db")).unwrap();
+    for e in fmeta::traverse::walk(std::slice::from_ref(&root), &opts) {
+        let m = fmeta::detect::FileMeta::for_entry(
+            &e.path,
+            e.depth,
+            e.is_symlink,
+            e.file_type,
+            opts.sniff,
+            false,
+            true,
+        );
+        fmeta::db::upsert(&conn, &m, 12345).unwrap();
+    }
+    let (cols, rows) =
+        fmeta::db::run_query(&conn, "SELECT path, category FROM files ORDER BY path").unwrap();
+    assert_eq!(cols, vec!["path".to_string(), "category".to_string()]);
+    let cats: Vec<&str> = rows.iter().map(|r| r[1].as_str()).collect();
+    assert!(cats.contains(&"text"), "hello.txt should be text: {cats:?}");
 }
 
 fn tempfile_dir() -> std::path::PathBuf {
