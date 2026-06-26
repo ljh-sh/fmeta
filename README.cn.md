@@ -103,6 +103,7 @@ depth  size  kind  mime       encoding  mime_hint  dims     path
 | `width`     | 仅图片     | 像素宽（`imagesize`）                             |
 | `height`    | 仅图片     | 像素高（`imagesize`）                             |
 | `exif`      | 仅图片     | EXIF 标签→值 映射（`kamadak-exif`）；无则缺省     |
+| `pages`     | 仅 PDF     | 页数（`lopdf`）；加密/损坏 PDF 缺省               |
 | `is_symlink`| 符号链接   | `false` 时省略                                     |
 
 ### 选项

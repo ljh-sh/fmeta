@@ -199,6 +199,30 @@ fn image_dimensions_and_exif() {
     assert!(pic.exif.is_none(), "crafted PNG has no EXIF");
 }
 
+/// PDFs get a page count (via lopdf); non-PDFs don't.
+#[test]
+fn pdf_page_count() {
+    let tmp = tempfile_dir();
+    let root = tmp.join("root");
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("one.pdf"), include_bytes!("fixtures/one.pdf")).unwrap();
+    fs::write(root.join("three.pdf"), include_bytes!("fixtures/three.pdf")).unwrap();
+
+    let metas = collect(&root);
+    let one = metas
+        .iter()
+        .find(|m| m.path.ends_with("one.pdf"))
+        .expect("one.pdf");
+    assert_eq!(one.mime.as_deref(), Some("application/pdf"));
+    assert_eq!(one.pages, Some(1));
+
+    let three = metas
+        .iter()
+        .find(|m| m.path.ends_with("three.pdf"))
+        .expect("three.pdf");
+    assert_eq!(three.pages, Some(3));
+}
+
 fn tempfile_dir() -> std::path::PathBuf {
     // Avoid pulling in the `tempfile` crate; use a process-unique dir.
     let dir = std::env::temp_dir().join(format!(

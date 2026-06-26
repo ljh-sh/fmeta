@@ -44,6 +44,9 @@ pub struct FileMeta {
     /// Map of tag name → display value. Absent when no EXIF is present.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exif: Option<BTreeMap<String, String>>,
+    /// Page count, for PDF documents (`lopdf`). Absent for non-PDFs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pages: Option<u32>,
 }
 
 #[derive(Debug, Clone, Copy, serde::Serialize, PartialEq, Eq)]
@@ -87,6 +90,7 @@ impl FileMeta {
             width: None,
             height: None,
             exif: None,
+            pages: None,
         };
 
         if paths_only || kind != EntryKind::File {
@@ -140,7 +144,26 @@ impl FileMeta {
             }
             meta.exif = extract_exif(&buf);
         }
+
+        // For PDFs, count pages. `lopdf` reads the cross-reference table and
+        // page tree (not content streams), so this is cheap relative to file
+        // size; encrypted or malformed PDFs yield no count.
+        if mime.as_deref() == Some("application/pdf") {
+            meta.pages = pdf_page_count(path);
+        }
         meta
+    }
+}
+
+/// Count pages in a PDF via `lopdf`. Returns None for encrypted or malformed
+/// PDFs (best-effort, like EXIF).
+fn pdf_page_count(path: &Path) -> Option<u32> {
+    let doc = lopdf::Document::load(path).ok()?;
+    let count = doc.get_pages().len() as u32;
+    if count == 0 {
+        None
+    } else {
+        Some(count)
     }
 }
 

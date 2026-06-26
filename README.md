@@ -103,6 +103,7 @@ Fields:
 | `width`      | images         | pixel width (`imagesize`)                                      |
 | `height`     | images         | pixel height (`imagesize`)                                     |
 | `exif`       | images         | EXIF tag → value map (`kamadak-exif`); absent when none        |
+| `pages`      | PDFs           | page count (`lopdf`); absent for encrypted/malformed PDFs      |
 | `is_symlink` | symlinks       | omitted when `false`                                           |
 
 ### Options

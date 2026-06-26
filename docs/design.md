@@ -1,6 +1,6 @@
 # fmeta — design
 
-> Status: v0.3. This document records the architectural decisions and the roadmap for v1+.
+> Status: v0.4. This document records the architectural decisions and the roadmap for v1+.
 
 ## Goals
 
@@ -63,15 +63,16 @@ Three formats, one underlying schema:
 | 11 | `require_git(false)` (v0.2) | honour `.gitignore` files even outside git worktrees |
 | 12 | Image dims + EXIF from the sniff buffer (v0.3) | `imagesize` (header-only, no decode) + `kamadak-exif` (MIT); gated to `image/*` so non-images pay nothing. TSV stays 6-col; dims/EXIF surface in JSON + the table `dims` column |
 | 13 | Media metadata not in TSV (v0.3) | keep the default TSV schema stable post-v0.2; agents wanting dims/EXIF use `--format json` |
+| 14 | PDF page count via `lopdf` (v0.4) | documents are common opaque files; `lopdf` reads the xref + page tree (not content streams), cheap relative to size. `pages` field is JSON-only; encrypted/malformed PDFs yield none |
 
 ## Roadmap
 
 - **v0.1**: traversal, size, mime, encoding, table + JSON.
 - **v0.2**: TSV default output + `mime_hint` category, `.gitignore`/`.ignore` honoring via the `ignore` crate (`--no-ignore` to disable), `-a/--all` for hidden files.
-- **v0.3** (this release): image pixel dimensions (`imagesize`) + EXIF tags (`kamadak-exif`) for `image/*` files — surfaced in JSON and the table `dims` column; TSV unchanged.
-- **v0.4**: audio duration, video dimensions.
-- **v1.0**: document metadata (PDF page count, Office properties), parallel traversal. EXIF/dims extension to more formats tracked in #9.
-- **v1.0**: document metadata (PDF page count, Office properties), parallel traversal. EXIF/ID3/multimedia metadata is tracked in a follow-up issue.
+- **v0.3**: image pixel dimensions (`imagesize`) + EXIF tags (`kamadak-exif`) for `image/*` files — surfaced in JSON and the table `dims` column; TSV unchanged.
+- **v0.4** (this release): PDF page count via `lopdf` — `pages` field (JSON) for `application/pdf`.
+- **v0.5**: audio duration, video dimensions.
+- **v1.0**: Office document properties, parallel traversal. Further media metadata (audio/video/Office) tracked in #9.
 
 ## Security notes
 
