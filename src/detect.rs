@@ -65,6 +65,10 @@ pub struct FileMeta {
     /// does not handle quoted delimiters.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub columns: Option<usize>,
+    /// Number of contained entries for archives (zip / tar / tar.gz) — and the
+    /// internal file count for Office docs (which are zip containers).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub entries: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, serde::Serialize, PartialEq, Eq)]
@@ -115,6 +119,7 @@ impl FileMeta {
             mtime: None,
             ctime: None,
             columns: None,
+            entries: None,
         };
 
         // mtime/ctime apply to every entry (files and dirs alike); fetch the
@@ -222,6 +227,11 @@ impl FileMeta {
                 if let Some(tags) = office_meta(path) {
                     meta.tags = Some(tags);
                 }
+            }
+            // Archive entry count (zip / tar / tar.gz); also the internal file
+            // count of Office docs (zip containers).
+            if meta.entries.is_none() {
+                meta.entries = archive_entries(path, mime.as_deref());
             }
         }
         meta
@@ -332,6 +342,41 @@ fn xml_tag_text(xml: &str, tag: &str) -> Option<String> {
     } else {
         Some(val.to_string())
     }
+}
+
+/// Number of contained entries for an archive: zip (`za.len()`), tar, or
+/// tar.gz (gunzipped then counted). Returns None for other/unparseable.
+fn archive_entries(path: &Path, mime: Option<&str>) -> Option<usize> {
+    match mime {
+        Some("application/zip") => {
+            Some(zip::ZipArchive::new(fs::File::open(path).ok()?).ok()?.len())
+        }
+        Some("application/x-tar") => tar_entries(path, false),
+        Some("application/gzip") if is_tar_gz(path) => tar_entries(path, true),
+        _ => None,
+    }
+}
+
+fn is_tar_gz(path: &Path) -> bool {
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .map(|n| n.to_ascii_lowercase())
+        .unwrap_or_default();
+    name.ends_with(".tar.gz") || name.ends_with(".tgz")
+}
+
+/// Count entries in a (optionally gzipped) tar archive.
+fn tar_entries(path: &Path, gz: bool) -> Option<usize> {
+    let file = fs::File::open(path).ok()?;
+    let reader: Box<dyn std::io::Read> = if gz {
+        Box::new(flate2::read::GzDecoder::new(file))
+    } else {
+        Box::new(file)
+    };
+    let mut archive = tar::Archive::new(reader);
+    let entries = archive.entries().ok()?;
+    Some(entries.filter_map(Result::ok).count())
 }
 
 /// Count pages in a PDF via `lopdf`. Returns None for encrypted or malformed

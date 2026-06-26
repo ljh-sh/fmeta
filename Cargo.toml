@@ -18,6 +18,7 @@ exclude = [".release-artifacts/", ".github/", "target/", "*.swp", "*.swo", "*~",
 anyhow = "1.0.102"
 chardetng = "1.0.0"
 clap = { version = "4.6.1", features = ["derive"] }
+flate2 = "1.1.9"
 ignore = "0.4"
 imagesize = "0.14.0"
 infer = "0.19.0"
@@ -27,4 +28,5 @@ lopdf = "0.36.0"
 mp4parse = "0.17.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.150", features = ["preserve_order"] }
+tar = "0.4.46"
 zip = { version = "2.4.2", default-features = false, features = ["deflate"] }
