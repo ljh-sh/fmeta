@@ -1,6 +1,6 @@
 # fmeta — design
 
-> Status: v0.7. This document records the architectural decisions and the roadmap for v1+.
+> Status: v0.8. This document records the architectural decisions and the roadmap for v1+.
 
 ## Goals
 
@@ -68,6 +68,7 @@ Three formats, one underlying schema:
 | 16 | Audio duration + tags via `lofty` (v0.5) | `lofty` (MIT/Apache) reads the whole file → `duration_secs` + `tags` (artist/album/title/genre/year) for `audio/*`; JSON-only, gated behind `!opts.fast` |
 | 17 | Video dims + duration via `mp4parse` (v0.6) | `mp4parse` (MPL-2.0, Mozilla) parses ISO BMFF (mp4/m4v/mov); `tkhd.width/height` are 16.16 fixed-point (decode with `>> 16`). MPL-2.0 = file-level weak copyleft, fine as an unmodified dep (deny.toml now allows MPL-2.0). Reuses `width`/`height`/`duration_secs`; gated behind `!opts.fast` |
 | 18 | mtime/ctime, CSV columns, Office core props, archive/EPUB counts (v0.7) | mtime (`fs::metadata`, also the index-DB cache key) + ctime = **no dep, Δ0 KB**. CSV/TSV column count = ext-based, no dep. Office `docx`/`xlsx`/`pptx` core props (title/author/created/modified) + zip/tar/EPUB spine entry counts via `zip` (deflate-only) + `tar` + `flate2` — ~+34 KB stripped combined. ext-based detection for magic-less formats (CSV, Office, EPUB) since infer reports Office/EPUB as `application/zip` |
+| 19 | SQLite table count via `rusqlite` bundled (v0.8) | opens external `.db` read-only (`SQLite format 3\0` magic), counts user tables. **+1.5 MB stripped / +0.6 MB xz** — by far the biggest dep (bundles the SQLite C amalgamation). Justified: the same bundled SQLite will back **fmeta's own index DB** (WAL, concurrent reads) — a persistent metadata cache keyed on `mtime`, plus AI/auto tags. (Pinned rusqlite 0.32: libsqlite3-sys ≥0.38 uses unstable `cfg_select`.) |
 
 ## Roadmap
 
@@ -77,9 +78,10 @@ Three formats, one underlying schema:
 - **v0.4**: PDF page count via `lopdf` — `pages` field (JSON) for `application/pdf`.
 - **v0.5**: audio duration + tags via `lofty`; **default is deep, `--fast` opts out** (#13).
 - **v0.6**: video dimensions + duration via `mp4parse` (MPL-2.0 allowed in deny.toml).
-- **v0.7** (this release): mtime/ctime, CSV/TSV column count, Office core props (docx/xlsx/pptx), archive entry count (zip/tar/tar.gz), EPUB spine count.
-- **v0.8**: SQLite introspection + fmeta's own index DB (bundled via `rusqlite`); see #9.
-- **v1.0**: font/parquet metadata, parallel traversal. Remaining metadata tracked in #9.
+- **v0.7**: mtime/ctime, CSV/TSV column count, Office core props (docx/xlsx/pptx), archive entry count (zip/tar/tar.gz), EPUB spine count.
+- **v0.8** (this release): SQLite table count via `rusqlite` bundled (also the engine for the planned index DB).
+- **v0.9**: font (TTF/OTF) + parquet metadata.
+- **v1.0**: **fmeta index DB** (bundled SQLite, WAL; persistent metadata cache keyed on `mtime`; AI/auto tags), parallel traversal. Remaining metadata in #9.
 
 ## Security notes
 

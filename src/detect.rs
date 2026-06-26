@@ -69,6 +69,9 @@ pub struct FileMeta {
     /// internal file count for Office docs (which are zip containers).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub entries: Option<usize>,
+    /// Number of user tables in a SQLite database (`rusqlite`, read-only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tables: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, serde::Serialize, PartialEq, Eq)]
@@ -120,6 +123,7 @@ impl FileMeta {
             ctime: None,
             columns: None,
             entries: None,
+            tables: None,
         };
 
         // mtime/ctime apply to every entry (files and dirs alike); fetch the
@@ -238,6 +242,10 @@ impl FileMeta {
             // count of Office docs (zip containers).
             if meta.entries.is_none() {
                 meta.entries = archive_entries(path, mime.as_deref());
+            }
+            // SQLite user-table count (read-only open via `rusqlite`).
+            if meta.tables.is_none() && is_sqlite(&buf) {
+                meta.tables = sqlite_table_count(path);
             }
         }
         meta
@@ -432,6 +440,27 @@ fn tar_entries(path: &Path, gz: bool) -> Option<usize> {
     let mut archive = tar::Archive::new(reader);
     let entries = archive.entries().ok()?;
     Some(entries.filter_map(Result::ok).count())
+}
+
+/// SQLite databases start with the 16-byte magic `SQLite format 3\0`.
+fn is_sqlite(buf: &[u8]) -> bool {
+    buf.starts_with(b"SQLite format 3\0")
+}
+
+/// Count user tables in a SQLite DB via `rusqlite`, opened read-only. Returns
+/// None for encrypted/corrupt DBs. Internal `sqlite_%` tables are excluded.
+fn sqlite_table_count(path: &Path) -> Option<usize> {
+    use rusqlite::OpenFlags;
+    let flags = OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX;
+    let conn = rusqlite::Connection::open_with_flags(path, flags).ok()?;
+    let n: i64 = conn
+        .query_row(
+            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+            [],
+            |r| r.get(0),
+        )
+        .ok()?;
+    Some(n as usize)
 }
 
 /// Count pages in a PDF via `lopdf`. Returns None for encrypted or malformed
