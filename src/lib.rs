@@ -48,6 +48,7 @@ pub fn run() -> anyhow::Result<()> {
                 e.file_type,
                 opts.sniff,
                 opts.paths_only,
+                !opts.fast,
             )
         })
         .collect();

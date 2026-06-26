@@ -104,6 +104,8 @@ Fields:
 | `height`     | images         | pixel height (`imagesize`)                                     |
 | `exif`       | images         | EXIF tag → value map (`kamadak-exif`); absent when none        |
 | `pages`      | PDFs           | page count (`lopdf`); absent for encrypted/malformed PDFs      |
+| `duration_secs` | audio      | duration in seconds (`lofty`)                              |
+| `tags`       | audio          | artist/album/title/genre/year map (`lofty`); absent when none |
 | `is_symlink` | symlinks       | omitted when `false`                                           |
 
 ### Options
@@ -117,12 +119,13 @@ Fields:
 | `-o, --format F`    | `tsv` (default), `table`, or `json`                      |
 | `--sniff BYTES`     | bytes read per file for detection (default: 8192)        |
 | `--paths-only`      | skip detection, emit paths only                          |
+| `--fast`            | bounded walk: skip whole-file extractors (PDF pages, audio) — the default is "deep" |
 
 ## Scope
 
-In scope: directory traversal (gitignore-aware), size, mime detection, text encoding detection, coarse category hint, TSV + table + JSON output.
+In scope: directory traversal (gitignore-aware), size, mime detection, text encoding detection, coarse category hint, image dimensions + EXIF, PDF page count, audio duration + tags, TSV + table + JSON output.
 
-Out of scope (future): image / audio / video dimensions, EXIF / ID3 / PDF metadata (tracked in a follow-up issue), network and remote files. See [docs/design.md](docs/design.md) for the roadmap.
+Out of scope (future): video dimensions/duration, Office document properties (tracked in #9), network and remote files. See [docs/design.md](docs/design.md) for the roadmap.
 
 ## License
 

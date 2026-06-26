@@ -104,6 +104,8 @@ depth  size  kind  mime       encoding  mime_hint  dims     path
 | `height`    | 仅图片     | 像素高（`imagesize`）                             |
 | `exif`      | 仅图片     | EXIF 标签→值 映射（`kamadak-exif`）；无则缺省     |
 | `pages`     | 仅 PDF     | 页数（`lopdf`）；加密/损坏 PDF 缺省               |
+| `duration_secs` | 仅音频 | 时长（秒，`lofty`）                          |
+| `tags`      | 仅音频     | artist/album/title/genre/year 映射（`lofty`）；无则缺省 |
 | `is_symlink`| 符号链接   | `false` 时省略                                     |
 
 ### 选项
@@ -117,12 +119,13 @@ depth  size  kind  mime       encoding  mime_hint  dims     path
 | `-o, --format F`    | `tsv`（默认）、`table` 或 `json`              |
 | `--sniff BYTES`     | 每个文件读取的字节数（默认：8192）            |
 | `--paths-only`      | 跳过检测，只输出路径                          |
+| `--fast`            | 有界遍历：跳过读全文件的提取器（PDF 页数、音频）——默认是"深度" |
 
 ## 范围
 
-范围内：目录遍历（感知 .gitignore）、大小、mime 检测、文本编码检测、粗粒度类型提示、TSV + 表格 + JSON 输出。
+范围内：目录遍历（感知 .gitignore）、大小、mime 检测、文本编码检测、粗粒度类型提示、图片尺寸 + EXIF、PDF 页数、音频时长 + 标签、TSV + 表格 + JSON 输出。
 
-范围外（未来）：图片 / 音频 / 视频尺寸，EXIF / ID3 / PDF 元数据（已单开 issue 跟踪），网络和远程文件。路线图见 [docs/design.md](docs/design.md)。
+范围外（未来）：视频尺寸/时长、Office 文档属性（#9 跟踪），网络和远程文件。路线图见 [docs/design.md](docs/design.md)。
 
 ## 许可证
 
