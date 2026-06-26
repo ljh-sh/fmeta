@@ -71,20 +71,21 @@ fmeta --sniff 16384 path/to/dir
 17	file	-	image/png	image	./logo.png
 ```
 
-**表格（`--format table`）**——对齐列（多了 `depth`），便于人读：
+**表格（`--format table`）**——对齐列（多了 `depth` 和 `dims`），便于人读：
 
 ```
-depth  size  kind  mime       encoding  mime_hint  path
------  ----  ----  ---------  --------  ---------  ----
-1      12    file  -          UTF-8     text       ./Cargo.toml
-1      17    file  image/png  -         image      ./logo.png
-1      -     dir   -          -         -          ./src
+depth  size  kind  mime       encoding  mime_hint  dims     path
+-----  ----  ----  ---------  --------  ---------  -------  ----
+1      12    file  -          UTF-8     text       -        ./Cargo.toml
+1      17    file  image/png  -         image      256x256  ./logo.png
+1      -     dir   -          -         -          -        ./src
 ```
 
-**JSON Lines（`--format json`）**——每行一个对象，schema 稳定，可安全喂给 `jq`、`grep` 或直接给 LLM：
+**JSON Lines（`--format json`）**——每行一个对象，schema 稳定，可安全喂给 `jq`、`grep` 或直接给 LLM。图片额外带 `width`、`height` 和 `exif` 映射：
 
 ```json
 {"path":"src/cli.rs","depth":1,"kind":"file","size":1684,"encoding":"UTF-8","binary":false,"category":"text"}
+{"path":"logo.png","depth":1,"kind":"file","size":12345,"mime":"image/png","binary":true,"category":"image","width":256,"height":256}
 ```
 
 字段：
@@ -99,6 +100,9 @@ depth  size  kind  mime       encoding  mime_hint  path
 | `encoding`  | 仅文本文件 | 来自 `chardetng`；二进制或空文件时缺省            |
 | `binary`    | 仅文件     | sniff 窗口内出现 NUL 字节则为 `true`              |
 | `category`  | 仅文件     | `mime_hint`：`text`\|`image`\|`audio`\|`video`\|`archive`\|`binary`\|`data` |
+| `width`     | 仅图片     | 像素宽（`imagesize`）                             |
+| `height`    | 仅图片     | 像素高（`imagesize`）                             |
+| `exif`      | 仅图片     | EXIF 标签→值 映射（`kamadak-exif`）；无则缺省     |
 | `is_symlink`| 符号链接   | `false` 时省略                                     |
 
 ### 选项

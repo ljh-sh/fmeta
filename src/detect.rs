@@ -1,10 +1,13 @@
-//! Metadata detection: size, mime type, text encoding.
+//! Metadata detection: size, mime type, text encoding, and (for images)
+//! pixel dimensions and EXIF tags.
 //!
 //! For each visited file we read up to `sniff` bytes once and reuse the same
-//! buffer for both mime (via `infer`) and encoding (via `chardetng`)
-//! detection. Non-files (symlinks, directories) are skipped — they have no
-//! useful content metadata in v0.
+//! buffer for mime (via `infer`), encoding (via `chardetng`), and — for
+//! images — dimensions (`imagesize`) and EXIF (`kamadak-exif`) detection.
+//! Non-files (symlinks, directories) are skipped — they have no useful content
+//! metadata.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::Read;
 use std::path::Path;
@@ -31,6 +34,16 @@ pub struct FileMeta {
     /// `audio`, `video`, `archive`, `binary`, or `data`. Absent for non-files.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub category: Option<String>,
+    /// Pixel width, for images (`imagesize`). Absent for non-images.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub width: Option<u32>,
+    /// Pixel height, for images (`imagesize`). Absent for non-images.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub height: Option<u32>,
+    /// EXIF tags parsed from JPEG/TIFF/HEIF/etc. images (`kamadak-exif`).
+    /// Map of tag name → display value. Absent when no EXIF is present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exif: Option<BTreeMap<String, String>>,
 }
 
 #[derive(Debug, Clone, Copy, serde::Serialize, PartialEq, Eq)]
@@ -71,6 +84,9 @@ impl FileMeta {
             encoding: None,
             binary: None,
             category: None,
+            width: None,
+            height: None,
+            exif: None,
         };
 
         if paths_only || kind != EntryKind::File {
@@ -111,7 +127,51 @@ impl FileMeta {
         meta.encoding = encoding;
         meta.binary = binary;
         meta.category = Some(categorize(mime.as_deref(), binary.unwrap_or(false)).to_string());
+
+        // For images, read pixel dimensions and EXIF from the sniff buffer.
+        if mime
+            .as_deref()
+            .map(|m| m.starts_with("image/"))
+            .unwrap_or(false)
+        {
+            if let Some((w, h)) = image_dimensions(&buf) {
+                meta.width = Some(w);
+                meta.height = Some(h);
+            }
+            meta.exif = extract_exif(&buf);
+        }
         meta
+    }
+}
+
+/// Pixel dimensions from the sniff buffer via `imagesize`. Returns None for
+/// non-images or when the sniff window is too short to read the header.
+fn image_dimensions(buf: &[u8]) -> Option<(u32, u32)> {
+    let size = imagesize::blob_size(buf).ok()?;
+    Some((size.width as u32, size.height as u32))
+}
+
+/// A dump of EXIF tags from a JPEG/TIFF/HEIF/etc. image, as tag → display
+/// value. Returns None when the buffer has no parseable EXIF.
+fn extract_exif(buf: &[u8]) -> Option<BTreeMap<String, String>> {
+    use std::io::Cursor;
+    let exif = exif::Reader::new()
+        .read_from_container(&mut Cursor::new(buf))
+        .ok()?;
+    let mut map = BTreeMap::new();
+    for field in exif.fields() {
+        // kamadak-exif wraps ASCII strings in quotes for display; strip a
+        // single surrounding pair so consumers get the raw value.
+        let mut val = field.display_value().to_string();
+        if val.len() >= 2 && val.starts_with('"') && val.ends_with('"') {
+            val = val[1..val.len() - 1].to_string();
+        }
+        map.insert(field.tag.to_string(), val);
+    }
+    if map.is_empty() {
+        None
+    } else {
+        Some(map)
     }
 }
 

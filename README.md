@@ -71,20 +71,21 @@ fmeta --sniff 16384 path/to/dir
 17	file	-	image/png	image	./logo.png
 ```
 
-**Table (`--format table`)** — aligned columns (adds `depth`) for human reading:
+**Table (`--format table`)** — aligned columns (adds `depth` and `dims`) for human reading:
 
 ```
-depth  size  kind  mime       encoding  mime_hint  path
------  ----  ----  ---------  --------  ---------  ----
-1      12    file  -          UTF-8     text       ./Cargo.toml
-1      17    file  image/png  -         image      ./logo.png
-1      -     dir   -          -         -          ./src
+depth  size  kind  mime       encoding  mime_hint  dims     path
+-----  ----  ----  ---------  --------  ---------  -------  ----
+1      12    file  -          UTF-8     text       -        ./Cargo.toml
+1      17    file  image/png  -         image      256x256  ./logo.png
+1      -     dir   -          -         -          -        ./src
 ```
 
-**JSON Lines (`--format json`)** — one object per line, stable schema, safe for `jq`, `grep`, or direct LLM consumption:
+**JSON Lines (`--format json`)** — one object per line, stable schema, safe for `jq`, `grep`, or direct LLM consumption. Images additionally carry `width`, `height`, and an `exif` map:
 
 ```json
 {"path":"src/cli.rs","depth":1,"kind":"file","size":1684,"encoding":"UTF-8","binary":false,"category":"text"}
+{"path":"logo.png","depth":1,"kind":"file","size":12345,"mime":"image/png","binary":true,"category":"image","width":256,"height":256}
 ```
 
 Fields:
@@ -99,6 +100,9 @@ Fields:
 | `encoding`   | text files     | from `chardetng`; absent for binary or empty files             |
 | `binary`     | files only     | `true` if a NUL byte is found in the sniff window              |
 | `category`   | files only     | `mime_hint`: `text` \| `image` \| `audio` \| `video` \| `archive` \| `binary` \| `data` |
+| `width`      | images         | pixel width (`imagesize`)                                      |
+| `height`     | images         | pixel height (`imagesize`)                                     |
+| `exif`       | images         | EXIF tag → value map (`kamadak-exif`); absent when none        |
 | `is_symlink` | symlinks       | omitted when `false`                                           |
 
 ### Options

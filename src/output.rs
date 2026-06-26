@@ -62,7 +62,7 @@ fn render_table<W: Write>(out: &mut W, entries: &[FileMeta]) -> anyhow::Result<(
         return Ok(());
     }
 
-    // Columns: depth  size  kind  mime  encoding  mime_hint  path
+    // Columns: depth  size  kind  mime  encoding  mime_hint  dims  path
     // We compute per-column widths for alignment, capping every column except
     // the last (path) so a long path doesn't push the others off-screen.
     let header = [
@@ -72,13 +72,18 @@ fn render_table<W: Write>(out: &mut W, entries: &[FileMeta]) -> anyhow::Result<(
         "mime",
         "encoding",
         "mime_hint",
+        "dims",
         "path",
     ];
     let mut widths = header.map(|h| h.len());
 
-    let formatted: Vec<[String; 7]> = entries
+    let formatted: Vec<[String; 8]> = entries
         .iter()
         .map(|e| {
+            let dims = match (e.width, e.height) {
+                (Some(w), Some(h)) => format!("{w}x{h}"),
+                _ => "-".to_string(),
+            };
             [
                 e.depth.to_string(),
                 e.size
@@ -88,6 +93,7 @@ fn render_table<W: Write>(out: &mut W, entries: &[FileMeta]) -> anyhow::Result<(
                 e.mime.clone().unwrap_or_else(|| "-".to_string()),
                 e.encoding.clone().unwrap_or_else(|| "-".to_string()),
                 e.category.clone().unwrap_or_else(|| "-".to_string()),
+                dims,
                 e.path.clone(),
             ]
         })
@@ -95,7 +101,7 @@ fn render_table<W: Write>(out: &mut W, entries: &[FileMeta]) -> anyhow::Result<(
 
     for row in &formatted {
         for (i, cell) in row.iter().enumerate() {
-            if i < 6 {
+            if i < 7 {
                 widths[i] = widths[i].max(cell.len());
             }
         }
