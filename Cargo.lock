@@ -556,6 +556,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tar",
+ "ttf-parser",
  "zip",
 ]
 

@@ -247,6 +247,12 @@ impl FileMeta {
             if meta.tables.is_none() && is_sqlite(&buf) {
                 meta.tables = sqlite_table_count(path);
             }
+            // Font family / full name (ttf/otf/ttc via `ttf-parser`).
+            if meta.tags.is_none() {
+                if let Some(tags) = font_meta(path) {
+                    meta.tags = Some(tags);
+                }
+            }
         }
         meta
     }
@@ -461,6 +467,38 @@ fn sqlite_table_count(path: &Path) -> Option<usize> {
         )
         .ok()?;
     Some(n as usize)
+}
+
+/// Font family + full name for ttf/otf/ttc via `ttf-parser`. Extension-based.
+fn font_meta(path: &Path) -> Option<BTreeMap<String, String>> {
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())?;
+    if !matches!(ext.as_str(), "ttf" | "otf" | "ttc") {
+        return None;
+    }
+    let data = fs::read(path).ok()?;
+    let face = ttf_parser::Face::parse(&data, 0).ok()?;
+    let mut tags = BTreeMap::new();
+    for name in face.names() {
+        if let Some(s) = name.to_string() {
+            match name.name_id {
+                1 => {
+                    tags.entry("family".to_string()).or_insert(s);
+                }
+                4 => {
+                    tags.entry("full_name".to_string()).or_insert(s);
+                }
+                _ => {}
+            }
+        }
+    }
+    if tags.is_empty() {
+        None
+    } else {
+        Some(tags)
+    }
 }
 
 /// Count pages in a PDF via `lopdf`. Returns None for encrypted or malformed
