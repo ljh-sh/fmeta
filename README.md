@@ -105,7 +105,11 @@ Fields:
 | `exif`       | images         | EXIF tag → value map (`kamadak-exif`); absent when none        |
 | `pages`      | PDFs           | page count (`lopdf`); absent for encrypted/malformed PDFs      |
 | `duration_secs` | audio, video | duration in seconds (`lofty` / `mp4parse`)                  |
-| `tags`       | audio          | artist/album/title/genre/year map (`lofty`); absent when none |
+| `tags`       | audio, Office  | audio: artist/album/title/… (`lofty`); Office: title/author/created/modified |
+| `columns`    | CSV/TSV        | field count of the first row (naive)                           |
+| `entries`    | archives, EPUB | zip/tar/tar.gz entry count; EPUB spine count; Office internal file count |
+| `mtime`      | yes            | last-modified, Unix epoch seconds (also the index-DB cache key) |
+| `ctime`      | yes            | creation/birth time, Unix epoch seconds (absent if unsupported) |
 | `is_symlink` | symlinks       | omitted when `false`                                           |
 
 ### Options

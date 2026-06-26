@@ -353,7 +353,18 @@ fn xml_tag_text(xml: &str, tag: &str) -> Option<String> {
 /// Extract an attribute value from the first `<tag ... attr="value" ...>`
 /// occurrence (e.g. `full-path` on `<rootfile>` in EPUB container.xml).
 fn xml_attr(xml: &str, tag: &str, attr: &str) -> Option<String> {
-    let start = xml.find(&format!("<{tag}"))?;
+    let open = format!("<{tag}");
+    // Find `<tag` followed by a tag-name delimiter (space/>//tab/nl), so that
+    // `<rootfile` doesn't match `<rootfiles>`.
+    let mut search = 0;
+    let start = loop {
+        let s = xml[search..].find(&open)? + search;
+        let next = xml.as_bytes().get(s + open.len()).copied();
+        if matches!(next, Some(b' ' | b'>' | b'/' | b'\t' | b'\n')) {
+            break s;
+        }
+        search = s + open.len();
+    };
     let end = xml[start..].find('>')? + start;
     let slice = &xml[start..end];
     let needle = format!("{attr}=\"");

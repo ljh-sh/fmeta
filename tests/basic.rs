@@ -321,6 +321,33 @@ fn office_core_properties() {
     assert_eq!(tags.get("author"), Some(&"Test Author".to_string()));
 }
 
+/// EPUB spine count via zip + OPF; CSV/TSV column count.
+#[test]
+fn epub_spine_and_csv_columns() {
+    let tmp = tempfile_dir();
+    let root = tmp.join("root");
+    fs::create_dir_all(&root).unwrap();
+    fs::write(
+        root.join("sample.epub"),
+        include_bytes!("fixtures/sample.epub"),
+    )
+    .unwrap();
+    fs::write(root.join("data.csv"), b"a,b,c\n1,2,3\n").unwrap();
+
+    let metas = collect(&root);
+    let epub = metas
+        .iter()
+        .find(|m| m.path.ends_with("sample.epub"))
+        .expect("sample.epub");
+    assert_eq!(epub.entries, Some(3), "epub spine = 3");
+
+    let csv = metas
+        .iter()
+        .find(|m| m.path.ends_with("data.csv"))
+        .expect("data.csv");
+    assert_eq!(csv.columns, Some(3), "csv columns = 3");
+}
+
 fn tempfile_dir() -> std::path::PathBuf {
     // Avoid pulling in the `tempfile` crate; use a process-unique dir.
     let dir = std::env::temp_dir().join(format!(
