@@ -53,6 +53,13 @@ pub struct Cli {
     /// Skip metadata detection entirely; emit only paths (fast).
     #[arg(long)]
     pub paths_only: bool,
+
+    /// Bounded walk: only read `--sniff` bytes per file and skip whole-file
+    /// extractors (PDF pages, audio duration/tags). The DEFAULT is "deep"
+    /// (reads whole files for rich metadata); pass `--fast` for a quick pass
+    /// over huge trees.
+    #[arg(long)]
+    pub fast: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]

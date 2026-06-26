@@ -47,6 +47,12 @@ pub struct FileMeta {
     /// Page count, for PDF documents (`lopdf`). Absent for non-PDFs.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pages: Option<u32>,
+    /// Duration in seconds, for audio/video (`lofty`). Absent for non-media.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_secs: Option<f64>,
+    /// Media tags (artist/album/title/…) for audio (`lofty`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<BTreeMap<String, String>>,
 }
 
 #[derive(Debug, Clone, Copy, serde::Serialize, PartialEq, Eq)]
@@ -66,6 +72,7 @@ impl FileMeta {
         file_type: fs::FileType,
         sniff: usize,
         paths_only: bool,
+        deep: bool,
     ) -> Self {
         let kind = if file_type.is_file() {
             EntryKind::File
@@ -91,6 +98,8 @@ impl FileMeta {
             height: None,
             exif: None,
             pages: None,
+            duration_secs: None,
+            tags: None,
         };
 
         if paths_only || kind != EntryKind::File {
@@ -145,14 +154,57 @@ impl FileMeta {
             meta.exif = extract_exif(&buf);
         }
 
-        // For PDFs, count pages. `lopdf` reads the cross-reference table and
-        // page tree (not content streams), so this is cheap relative to file
-        // size; encrypted or malformed PDFs yield no count.
-        if mime.as_deref() == Some("application/pdf") {
-            meta.pages = pdf_page_count(path);
+        // Whole-file ("deep") extractors: these read beyond the sniff buffer, so
+        // they only run when not in --fast mode. `--fast` keeps the walk bounded
+        // to the sniff read; the default (deep) trades IO for rich metadata.
+        if deep {
+            // PDF page count. `lopdf` reads the cross-reference table + page
+            // tree; encrypted/malformed PDFs yield no count.
+            if mime.as_deref() == Some("application/pdf") {
+                meta.pages = pdf_page_count(path);
+            }
+            // Audio duration + tags. `lofty` reads the whole file.
+            if mime
+                .as_deref()
+                .map(|m| m.starts_with("audio/"))
+                .unwrap_or(false)
+            {
+                if let Some((secs, tags)) = audio_meta(path) {
+                    meta.duration_secs = Some(secs);
+                    meta.tags = if tags.is_empty() { None } else { Some(tags) };
+                }
+            }
         }
         meta
     }
+}
+
+/// Read audio duration (seconds) + a few common tags via `lofty`. Returns None
+/// when the file can't be parsed (best-effort).
+fn audio_meta(path: &Path) -> Option<(f64, BTreeMap<String, String>)> {
+    use lofty::prelude::*;
+
+    let mut f = fs::File::open(path).ok()?;
+    let tagged = lofty::read_from(&mut f).ok()?;
+    let secs = tagged.properties().duration().as_secs_f64();
+
+    let mut tags = BTreeMap::new();
+    if let Some(tag) = tagged.primary_tag() {
+        for (key, value) in [
+            ("artist", tag.artist()),
+            ("album", tag.album()),
+            ("title", tag.title()),
+            ("genre", tag.genre()),
+        ] {
+            if let Some(v) = value {
+                tags.insert(key.to_string(), v.to_string());
+            }
+        }
+        if let Some(year) = tag.year() {
+            tags.insert("year".to_string(), year.to_string());
+        }
+    }
+    Some((secs, tags))
 }
 
 /// Count pages in a PDF via `lopdf`. Returns None for encrypted or malformed

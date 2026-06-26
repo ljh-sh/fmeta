@@ -68,6 +68,7 @@ fn respects_max_depth_zero() {
         format: fmeta::cli::OutputFormat::Table,
         sniff: 8192,
         paths_only: false,
+        fast: false,
     };
     let entries = fmeta::traverse::walk(std::slice::from_ref(&root), &opts);
     assert_eq!(entries.len(), 1, "depth 0 must visit only the root");
@@ -83,6 +84,7 @@ fn collect(root: &Path) -> Vec<fmeta::detect::FileMeta> {
         format: fmeta::cli::OutputFormat::Table,
         sniff: 8192,
         paths_only: false,
+        fast: false,
     };
     let entries = fmeta::traverse::walk(&[root.to_path_buf()], &opts);
     entries
@@ -95,6 +97,7 @@ fn collect(root: &Path) -> Vec<fmeta::detect::FileMeta> {
                 e.file_type,
                 opts.sniff,
                 opts.paths_only,
+                true,
             )
         })
         .collect()
@@ -119,6 +122,7 @@ fn gitignore_filters_by_default() {
         format: fmeta::cli::OutputFormat::Table,
         sniff: 8192,
         paths_only: false,
+        fast: false,
     };
     let paths: Vec<String> = fmeta::traverse::walk(std::slice::from_ref(&root), &opts)
         .into_iter()
@@ -221,6 +225,53 @@ fn pdf_page_count() {
         .find(|m| m.path.ends_with("three.pdf"))
         .expect("three.pdf");
     assert_eq!(three.pages, Some(3));
+}
+
+/// Audio files get a duration (via lofty); raw WAV has no tags.
+#[test]
+fn audio_duration() {
+    let tmp = tempfile_dir();
+    let root = tmp.join("root");
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("beep.wav"), include_bytes!("fixtures/beep.wav")).unwrap();
+
+    let metas = collect(&root);
+    let beep = metas
+        .iter()
+        .find(|m| m.path.ends_with("beep.wav"))
+        .expect("beep.wav");
+    assert!(
+        beep.mime.as_deref().unwrap_or("").starts_with("audio/"),
+        "mime: {:?}",
+        beep.mime
+    );
+    assert_eq!(beep.category.as_deref(), Some("audio"));
+    let dur = beep.duration_secs.expect("duration");
+    assert!((dur - 1.0).abs() < 0.05, "duration ~1.0s, got {dur}");
+    assert!(beep.tags.is_none(), "raw WAV has no tags");
+}
+
+/// `--fast` skips the whole-file extractors (PDF pages, audio duration),
+/// while the deep default produces them.
+#[test]
+fn fast_skips_deep_extractors() {
+    let tmp = tempfile_dir();
+    let root = tmp.join("root");
+    fs::create_dir_all(&root).unwrap();
+    let pdf = root.join("one.pdf");
+    fs::write(&pdf, include_bytes!("fixtures/one.pdf")).unwrap();
+    let ft = fs::symlink_metadata(&pdf).unwrap().file_type();
+
+    let deep = fmeta::detect::FileMeta::for_entry(&pdf, 0, false, ft, 8192, false, true);
+    assert_eq!(deep.pages, Some(1), "deep (default) reads PDF page count");
+
+    let fast = fmeta::detect::FileMeta::for_entry(&pdf, 0, false, ft, 8192, false, false);
+    assert!(
+        fast.pages.is_none(),
+        "--fast must skip the whole-file PDF extractor"
+    );
+    // Sniff-based metadata is still present in --fast.
+    assert_eq!(fast.mime.as_deref(), Some("application/pdf"));
 }
 
 fn tempfile_dir() -> std::path::PathBuf {
