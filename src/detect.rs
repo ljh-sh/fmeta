@@ -228,6 +228,12 @@ impl FileMeta {
                     meta.tags = Some(tags);
                 }
             }
+            // EPUB spine count (reading-order length, ≈ pages) — checked before
+            // the generic archive count so an .epub reports spine items, not the
+            // raw zip entry count. Reuses zip.
+            if meta.entries.is_none() {
+                meta.entries = epub_spine_count(path);
+            }
             // Archive entry count (zip / tar / tar.gz); also the internal file
             // count of Office docs (zip containers).
             if meta.entries.is_none() {
@@ -342,6 +348,44 @@ fn xml_tag_text(xml: &str, tag: &str) -> Option<String> {
     } else {
         Some(val.to_string())
     }
+}
+
+/// Extract an attribute value from the first `<tag ... attr="value" ...>`
+/// occurrence (e.g. `full-path` on `<rootfile>` in EPUB container.xml).
+fn xml_attr(xml: &str, tag: &str, attr: &str) -> Option<String> {
+    let start = xml.find(&format!("<{tag}"))?;
+    let end = xml[start..].find('>')? + start;
+    let slice = &xml[start..end];
+    let needle = format!("{attr}=\"");
+    let a = slice.find(&needle)? + needle.len();
+    let b = slice[a..].find('"')? + a;
+    Some(slice[a..b].to_string())
+}
+
+/// Read a zip entry into a buffer.
+fn zip_read(za: &mut zip::ZipArchive<fs::File>, name: &str) -> Option<Vec<u8>> {
+    let mut buf = Vec::new();
+    za.by_name(name).ok()?.read_to_end(&mut buf).ok()?;
+    Some(buf)
+}
+
+/// EPUB spine count (reading-order length, the closest thing EPUB has to a
+/// page count). Follows META-INF/container.xml → OPF `rootfile` → counts
+/// `<itemref>` in the OPF `<spine>`. Extension-based (.epub).
+fn epub_spine_count(path: &Path) -> Option<usize> {
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())?
+        .to_ascii_lowercase();
+    if ext != "epub" {
+        return None;
+    }
+    let mut za = zip::ZipArchive::new(fs::File::open(path).ok()?).ok()?;
+    let container =
+        String::from_utf8_lossy(&zip_read(&mut za, "META-INF/container.xml")?).into_owned();
+    let opf_path = xml_attr(&container, "rootfile", "full-path")?;
+    let opf = String::from_utf8_lossy(&zip_read(&mut za, &opf_path)?).into_owned();
+    Some(opf.matches("<itemref").count())
 }
 
 /// Number of contained entries for an archive: zip (`za.len()`), tar, or
