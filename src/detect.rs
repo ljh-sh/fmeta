@@ -53,6 +53,14 @@ pub struct FileMeta {
     /// Media tags (artist/album/title/…) for audio (`lofty`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tags: Option<BTreeMap<String, String>>,
+    /// Last-modified time, Unix epoch seconds (`fs::metadata`). Also the cache
+    /// key for fmeta's index DB (a file whose mtime is unchanged is reused).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mtime: Option<i64>,
+    /// Creation (birth) time, Unix epoch seconds (`fs::metadata`). Absent on
+    /// filesystems that don't record birth time.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ctime: Option<i64>,
 }
 
 #[derive(Debug, Clone, Copy, serde::Serialize, PartialEq, Eq)]
@@ -100,17 +108,26 @@ impl FileMeta {
             pages: None,
             duration_secs: None,
             tags: None,
+            mtime: None,
+            ctime: None,
         };
+
+        // mtime/ctime apply to every entry (files and dirs alike); fetch the
+        // metadata once. (Size + content detection below reuse this for files.)
+        if let Ok(m) = fs::metadata(path) {
+            meta.mtime = epoch(m.modified());
+            meta.ctime = epoch(m.created());
+            if kind == EntryKind::File {
+                meta.size = Some(m.len());
+            }
+        }
 
         if paths_only || kind != EntryKind::File {
             return meta;
         }
 
-        // Size: prefer metadata; fall back to None if unreadable.
-        meta.size = fs::metadata(path).map(|m| m.len()).ok();
-
         // Sniff content for mime + encoding. Files we cannot open get no
-        // content metadata (size may still be present).
+        // content metadata (size/mtime may still be present from the stat above).
         let Ok(mut f) = fs::File::open(path) else {
             return meta;
         };
@@ -255,6 +272,16 @@ fn pdf_page_count(path: &Path) -> Option<u32> {
         None
     } else {
         Some(count)
+    }
+}
+
+/// Convert a `SystemTime` from `fs::metadata` to Unix epoch seconds. None for
+/// times before the epoch or when the filesystem reports none.
+fn epoch(t: std::io::Result<std::time::SystemTime>) -> Option<i64> {
+    let t = t.ok()?;
+    match t.duration_since(std::time::UNIX_EPOCH) {
+        Ok(d) => Some(d.as_secs() as i64),
+        Err(e) => Some(-(e.duration().as_secs() as i64)),
     }
 }
 
