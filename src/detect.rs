@@ -215,6 +215,14 @@ impl FileMeta {
                     meta.duration_secs = secs;
                 }
             }
+            // Office Open XML (docx/xlsx/pptx): ZIP containers whose
+            // docProps/core.xml holds Dublin Core properties. Extension-based
+            // (infer reports them as application/zip).
+            if meta.tags.is_none() {
+                if let Some(tags) = office_meta(path) {
+                    meta.tags = Some(tags);
+                }
+            }
         }
         meta
     }
@@ -272,6 +280,58 @@ fn video_meta(path: &Path) -> Option<(u32, u32, Option<f64>)> {
         },
     };
     Some((width, height, secs))
+}
+
+/// Office Open XML core properties (docx/xlsx/pptx) via `zip`. The container's
+/// `docProps/core.xml` holds Dublin Core fields (title/author/created/modified).
+/// Extension-based: infer reports these files as `application/zip`.
+fn office_meta(path: &Path) -> Option<BTreeMap<String, String>> {
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())?;
+    if !matches!(ext.as_str(), "docx" | "xlsx" | "pptx") {
+        return None;
+    }
+    let mut za = zip::ZipArchive::new(fs::File::open(path).ok()?).ok()?;
+    let mut buf = Vec::new();
+    za.by_name("docProps/core.xml")
+        .ok()?
+        .read_to_end(&mut buf)
+        .ok()?;
+    let xml = String::from_utf8_lossy(&buf);
+    let mut tags = BTreeMap::new();
+    for (key, tag) in [
+        ("title", "dc:title"),
+        ("author", "dc:creator"),
+        ("created", "dcterms:created"),
+        ("modified", "dcterms:modified"),
+        ("last_modified_by", "cp:lastModifiedBy"),
+        ("language", "dc:language"),
+    ] {
+        if let Some(v) = xml_tag_text(&xml, tag) {
+            tags.insert(key.to_string(), v);
+        }
+    }
+    if tags.is_empty() {
+        None
+    } else {
+        Some(tags)
+    }
+}
+
+/// Extract the inner text of the first `<tag ...>text</tag>` occurrence. Naive
+/// but sufficient for the small, well-structured docProps/core.xml.
+fn xml_tag_text(xml: &str, tag: &str) -> Option<String> {
+    let start = xml.find(&format!("<{tag}"))?;
+    let after_open = xml[start..].find('>')? + start + 1;
+    let close = xml[after_open..].find('<')? + after_open;
+    let val = xml[after_open..close].trim();
+    if val.is_empty() {
+        None
+    } else {
+        Some(val.to_string())
+    }
 }
 
 /// Count pages in a PDF via `lopdf`. Returns None for encrypted or malformed

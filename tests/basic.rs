@@ -299,6 +299,28 @@ fn video_dimensions_and_duration() {
     assert!((dur - 3.0).abs() < 0.1, "duration ~3.0s, got {dur}");
 }
 
+/// Office (docx/xlsx/pptx) core properties via zip + docProps/core.xml.
+#[test]
+fn office_core_properties() {
+    let tmp = tempfile_dir();
+    let root = tmp.join("root");
+    fs::create_dir_all(&root).unwrap();
+    fs::write(
+        root.join("sample.docx"),
+        include_bytes!("fixtures/sample.docx"),
+    )
+    .unwrap();
+
+    let metas = collect(&root);
+    let doc = metas
+        .iter()
+        .find(|m| m.path.ends_with("sample.docx"))
+        .expect("sample.docx");
+    let tags = doc.tags.as_ref().expect("office core props");
+    assert_eq!(tags.get("title"), Some(&"Sample Doc".to_string()));
+    assert_eq!(tags.get("author"), Some(&"Test Author".to_string()));
+}
+
 fn tempfile_dir() -> std::path::PathBuf {
     // Avoid pulling in the `tempfile` crate; use a process-unique dir.
     let dir = std::env::temp_dir().join(format!(

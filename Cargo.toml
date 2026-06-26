@@ -27,3 +27,4 @@ lopdf = "0.36.0"
 mp4parse = "0.17.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.150", features = ["preserve_order"] }
+zip = { version = "2.4.2", default-features = false, features = ["deflate"] }
