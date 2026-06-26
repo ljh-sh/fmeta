@@ -105,7 +105,7 @@ Fields:
 | `exif`       | images         | EXIF tag → value map (`kamadak-exif`); absent when none        |
 | `pages`      | PDFs           | page count (`lopdf`); absent for encrypted/malformed PDFs      |
 | `duration_secs` | audio, video | duration in seconds (`lofty` / `mp4parse`)                  |
-| `tags`       | audio, Office  | audio: artist/album/title/… (`lofty`); Office: title/author/created/modified |
+| `tags`       | audio, Office, fonts | audio: artist/album/title/… (`lofty`); Office: title/author/created/modified; fonts: family/full_name (`ttf-parser`) |
 | `columns`    | CSV/TSV        | field count of the first row (naive)                           |
 | `entries`    | archives, EPUB | zip/tar/tar.gz entry count; EPUB spine count; Office internal file count |
 | `tables`     | SQLite         | user-table count (`rusqlite`, read-only)                        |
