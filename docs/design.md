@@ -1,6 +1,6 @@
 # fmeta — design
 
-> Status: v0.2. This document records the architectural decisions and the roadmap for v1+.
+> Status: v0.3. This document records the architectural decisions and the roadmap for v1+.
 
 ## Goals
 
@@ -44,7 +44,7 @@ Three formats, one underlying schema:
 - **Table** — aligned columns (adds `depth`) for human reading.
 - **JSON Lines** — one object per line, stable field order, optional fields omitted rather than null. Chosen over a JSON array so output streams without buffering the whole tree in memory.
 
-`mime_hint` is a coarse category (`text` / `image` / `audio` / `video` / `archive` / `binary` / `data`) derived from the mime + the NUL-binary flag, so agents can filter ("just the images") without parsing mime types. Field selection favours "every field answers a real question". We deliberately do not emit `mtime`/`ctime`/`perms`: those are `stat` territory and trivially obtainable; fmeta focuses on content-derived metadata that is expensive to recompute.
+`mime_hint` is a coarse category (`text` / `image` / `audio` / `video` / `archive` / `binary` / `data`) derived from the mime + the NUL-binary flag, so agents can filter ("just the images") without parsing mime types. For `image/*` files, v0.3 additionally emits pixel `width`/`height` (via `imagesize`, header-only) and an `exif` map (via `kamadak-exif`) in JSON, and a `dims` column (`WxH`) in the table; the TSV schema is unchanged. Field selection favours "every field answers a real question". We deliberately do not emit `mtime`/`ctime`/`perms`: those are `stat` territory and trivially obtainable; fmeta focuses on content-derived metadata that is expensive to recompute.
 
 ## Design decisions
 
@@ -61,13 +61,16 @@ Three formats, one underlying schema:
 | 9 | TSV default output (v0.2) | agent/pipeline-first; `path` last so spaces don't break parsing |
 | 10 | `mime_hint` category column (v0.2) | coarse filterable type without mime parsing; honors gitignore via `--no-ignore` toggle |
 | 11 | `require_git(false)` (v0.2) | honour `.gitignore` files even outside git worktrees |
+| 12 | Image dims + EXIF from the sniff buffer (v0.3) | `imagesize` (header-only, no decode) + `kamadak-exif` (MIT); gated to `image/*` so non-images pay nothing. TSV stays 6-col; dims/EXIF surface in JSON + the table `dims` column |
+| 13 | Media metadata not in TSV (v0.3) | keep the default TSV schema stable post-v0.2; agents wanting dims/EXIF use `--format json` |
 
 ## Roadmap
 
 - **v0.1**: traversal, size, mime, encoding, table + JSON.
-- **v0.2** (this release): TSV default output + `mime_hint` category, `.gitignore`/`.ignore` honoring via the `ignore` crate (`--no-ignore` to disable), `-a/--all` for hidden files.
-- **v0.3**: image dimensions (width/height) via a pluggable extractor trait; optional `--extractors` selection.
+- **v0.2**: TSV default output + `mime_hint` category, `.gitignore`/`.ignore` honoring via the `ignore` crate (`--no-ignore` to disable), `-a/--all` for hidden files.
+- **v0.3** (this release): image pixel dimensions (`imagesize`) + EXIF tags (`kamadak-exif`) for `image/*` files — surfaced in JSON and the table `dims` column; TSV unchanged.
 - **v0.4**: audio duration, video dimensions.
+- **v1.0**: document metadata (PDF page count, Office properties), parallel traversal. EXIF/dims extension to more formats tracked in #9.
 - **v1.0**: document metadata (PDF page count, Office properties), parallel traversal. EXIF/ID3/multimedia metadata is tracked in a follow-up issue.
 
 ## Security notes
