@@ -60,6 +60,22 @@ pub struct Cli {
     /// over huge trees.
     #[arg(long)]
     pub fast: bool,
+
+    /// **Index mode**: walk the given roots and upsert metadata into the fmeta
+    /// index DB (default `~/.local/data/ljh-sh/fmeta/sqlite.db`, override with
+    /// `--db`). Incremental: files whose mtime is unchanged are left untouched.
+    #[arg(long)]
+    pub index: bool,
+
+    /// **Query mode**: run raw SQL against the index DB and print rows as TSV.
+    /// Example: `fmeta --sql "SELECT path,size FROM files WHERE category='image'
+    /// ORDER BY size DESC LIMIT 20"`.
+    #[arg(long, value_name = "SQL")]
+    pub sql: Option<String>,
+
+    /// Override the index DB path (default `~/.local/data/ljh-sh/fmeta/sqlite.db`).
+    #[arg(long, value_name = "PATH")]
+    pub db: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]

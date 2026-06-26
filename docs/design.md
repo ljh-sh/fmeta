@@ -1,6 +1,6 @@
 # fmeta — design
 
-> Status: v0.9. This document records the architectural decisions and the roadmap for v1+.
+> Status: v1.0. fmeta is a file metadata database (index + raw-SQL query).
 
 ## Goals
 
@@ -70,6 +70,7 @@ Three formats, one underlying schema:
 | 18 | mtime/ctime, CSV columns, Office core props, archive/EPUB counts (v0.7) | mtime (`fs::metadata`, also the index-DB cache key) + ctime = **no dep, Δ0 KB**. CSV/TSV column count = ext-based, no dep. Office `docx`/`xlsx`/`pptx` core props (title/author/created/modified) + zip/tar/EPUB spine entry counts via `zip` (deflate-only) + `tar` + `flate2` — ~+34 KB stripped combined. ext-based detection for magic-less formats (CSV, Office, EPUB) since infer reports Office/EPUB as `application/zip` |
 | 19 | SQLite table count via `rusqlite` bundled (v0.8) | opens external `.db` read-only (`SQLite format 3\0` magic), counts user tables. **+1.5 MB stripped / +0.6 MB xz** — by far the biggest dep (bundles the SQLite C amalgamation). Justified: the same bundled SQLite will back **fmeta's own index DB** (WAL, concurrent reads) — a persistent metadata cache keyed on `mtime`, plus AI/auto tags. (Pinned rusqlite 0.32: libsqlite3-sys ≥0.38 uses unstable `cfg_select`.) |
 | 20 | Font family/full-name via `ttf-parser`; **parquet skipped** (v0.9) | ttf/otf/ttc family + full name via `ttf-parser` (MIT/Apache), +34 KB. **parquet deliberately NOT added**: the `parquet` crate pulls the entire `arrow` ecosystem (arrow-array/buffer/data/schema/...) even with `default-features=false`, and conflicts with existing deps — too heavy for just row/column count. Defer to a dedicated tool or the index-DB layer if real demand emerges. |
+| 21 | **fmeta is a file metadata database** (v1.0) | the v0.8 bundled SQLite is repurposed from "read external .db" to **fmeta's own index**. `--index [path]` walks + upserts into a global SQLite DB (`~/.local/data/ljh-sh/fmeta/sqlite.db`, override `--db`); `--sql "<sql>"` runs raw SQL over it. Incremental re-index via the `mtime` cache key (v0.7). WAL for concurrent reads. Reverses the earlier "decouple to external sqlite3" idea (#67) — fmeta owns the index. One-shot `fmeta <path>` walk retained for ad-hoc use. |
 
 ## Roadmap
 
@@ -81,8 +82,9 @@ Three formats, one underlying schema:
 - **v0.6**: video dimensions + duration via `mp4parse` (MPL-2.0 allowed in deny.toml).
 - **v0.7**: mtime/ctime, CSV/TSV column count, Office core props (docx/xlsx/pptx), archive entry count (zip/tar/tar.gz), EPUB spine count.
 - **v0.8**: SQLite table count via `rusqlite` bundled (also the engine for the planned index DB).
-- **v0.9** (this release): font family/full-name via `ttf-parser` (parquet skipped — pulls all of arrow).
-- **v1.0**: **fmeta index DB** (bundled SQLite, WAL; persistent metadata cache keyed on `mtime`; AI/auto tags), parallel traversal. Remaining metadata in #9.
+- **v0.9**: font family/full-name via `ttf-parser` (parquet skipped — pulls all of arrow).
+- **v1.0** (this release): **file metadata database** — `--index` (global SQLite at `~/.local/data/ljh-sh/fmeta/sqlite.db`, WAL, mtime-incremental upsert) + `--sql` (raw SQL query).
+- **Later**: parallel traversal, `--prune` (drop deleted files from index), AI/auto tag columns. Remaining format metadata in #9.
 
 ## Security notes
 
