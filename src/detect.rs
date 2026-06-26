@@ -174,6 +174,19 @@ impl FileMeta {
                     meta.tags = if tags.is_empty() { None } else { Some(tags) };
                 }
             }
+            // Video dimensions + duration (`mp4parse`, MPL-2.0). Reads the
+            // whole file. ISO BMFF only (mp4/m4v/mov); mkv/webm yield none.
+            if mime
+                .as_deref()
+                .map(|m| m.starts_with("video/"))
+                .unwrap_or(false)
+            {
+                if let Some((w, h, secs)) = video_meta(path) {
+                    meta.width = Some(w);
+                    meta.height = Some(h);
+                    meta.duration_secs = secs;
+                }
+            }
         }
         meta
     }
@@ -205,6 +218,32 @@ fn audio_meta(path: &Path) -> Option<(f64, BTreeMap<String, String>)> {
         }
     }
     Some((secs, tags))
+}
+
+/// Read video pixel dimensions + duration (seconds) via `mp4parse` (ISO BMFF:
+/// mp4/m4v/mov). `tkhd.width`/`height` are 16.16 fixed-point. Returns None for
+/// non-ISO-BMFF video (mkv/webm) or unparseable files (best-effort).
+fn video_meta(path: &Path) -> Option<(u32, u32, Option<f64>)> {
+    let mut f = fs::File::open(path).ok()?;
+    let context = mp4parse::read_mp4(&mut f).ok()?;
+    let track = context
+        .tracks
+        .iter()
+        .find(|t| matches!(t.track_type, mp4parse::TrackType::Video))?;
+    let tkhd = track.tkhd.as_ref()?;
+    let width = tkhd.width >> 16; // 16.16 fixed-point → pixels
+    let height = tkhd.height >> 16;
+
+    // Duration: prefer the movie-scaled edited duration; fall back to the
+    // track's own timescale.
+    let secs = match (&track.edited_duration, &context.timescale) {
+        (Some(d), Some(ts)) => Some(d.0 as f64 / ts.0 as f64),
+        _ => match (&track.duration, &track.timescale) {
+            (Some(d), Some(ts)) => Some(d.0 as f64 / ts.0 as f64),
+            _ => None,
+        },
+    };
+    Some((width, height, secs))
 }
 
 /// Count pages in a PDF via `lopdf`. Returns None for encrypted or malformed

@@ -274,6 +274,31 @@ fn fast_skips_deep_extractors() {
     assert_eq!(fast.mime.as_deref(), Some("application/pdf"));
 }
 
+/// Video files get dimensions + duration (via mp4parse). ISO BMFF only.
+#[test]
+fn video_dimensions_and_duration() {
+    let tmp = tempfile_dir();
+    let root = tmp.join("root");
+    fs::create_dir_all(&root).unwrap();
+    fs::write(
+        root.join("sample.mp4"),
+        include_bytes!("fixtures/sample.mp4"),
+    )
+    .unwrap();
+
+    let metas = collect(&root);
+    let vid = metas
+        .iter()
+        .find(|m| m.path.ends_with("sample.mp4"))
+        .expect("sample.mp4");
+    assert_eq!(vid.mime.as_deref(), Some("video/mp4"));
+    assert_eq!(vid.category.as_deref(), Some("video"));
+    assert_eq!(vid.width, Some(320));
+    assert_eq!(vid.height, Some(240));
+    let dur = vid.duration_secs.expect("duration");
+    assert!((dur - 3.0).abs() < 0.1, "duration ~3.0s, got {dur}");
+}
+
 fn tempfile_dir() -> std::path::PathBuf {
     // Avoid pulling in the `tempfile` crate; use a process-unique dir.
     let dir = std::env::temp_dir().join(format!(

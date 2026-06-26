@@ -1,6 +1,6 @@
 # fmeta — design
 
-> Status: v0.5. This document records the architectural decisions and the roadmap for v1+.
+> Status: v0.6. This document records the architectural decisions and the roadmap for v1+.
 
 ## Goals
 
@@ -66,6 +66,7 @@ Three formats, one underlying schema:
 | 14 | PDF page count via `lopdf` (v0.4) | documents are common opaque files; `lopdf` reads the xref + page tree (not content streams), cheap relative to size. `pages` field is JSON-only; encrypted/malformed PDFs yield none |
 | 15 | **Default is DEEP; `--fast` opts out** (v0.5) | the default walk reads whole files for rich metadata (PDF pages, audio duration/tags); `--fast` keeps it bounded to `--sniff` bytes. Inverts the usual `--deep` opt-in — rich metadata out of the box is the point of the tool. Binary size is not a constraint (#13) |
 | 16 | Audio duration + tags via `lofty` (v0.5) | `lofty` (MIT/Apache) reads the whole file → `duration_secs` + `tags` (artist/album/title/genre/year) for `audio/*`; JSON-only, gated behind `!opts.fast` |
+| 17 | Video dims + duration via `mp4parse` (v0.6) | `mp4parse` (MPL-2.0, Mozilla) parses ISO BMFF (mp4/m4v/mov); `tkhd.width/height` are 16.16 fixed-point (decode with `>> 16`). MPL-2.0 = file-level weak copyleft, fine as an unmodified dep (deny.toml now allows MPL-2.0). Reuses `width`/`height`/`duration_secs`; gated behind `!opts.fast` |
 
 ## Roadmap
 
@@ -73,9 +74,9 @@ Three formats, one underlying schema:
 - **v0.2**: TSV default output + `mime_hint` category, `.gitignore`/`.ignore` honoring via the `ignore` crate (`--no-ignore` to disable), `-a/--all` for hidden files.
 - **v0.3**: image pixel dimensions (`imagesize`) + EXIF tags (`kamadak-exif`) for `image/*` files — surfaced in JSON and the table `dims` column; TSV unchanged.
 - **v0.4**: PDF page count via `lopdf` — `pages` field (JSON) for `application/pdf`.
-- **v0.5** (this release): audio duration + tags via `lofty`; **default is deep, `--fast` opts out** (#13).
-- **v0.6**: video dimensions + duration.
-- **v1.0**: Office document properties, parallel traversal. Remaining media metadata (video/Office) tracked in #9.
+- **v0.5**: audio duration + tags via `lofty`; **default is deep, `--fast` opts out** (#13).
+- **v0.6** (this release): video dimensions + duration via `mp4parse` (MPL-2.0 allowed in deny.toml).
+- **v1.0**: Office document properties, parallel traversal. Remaining media metadata (Office) tracked in #9.
 
 ## Security notes
 
