@@ -100,11 +100,11 @@ depth  size  kind  mime       encoding  mime_hint  dims     path
 | `encoding`  | 仅文本文件 | 来自 `chardetng`；二进制或空文件时缺省            |
 | `binary`    | 仅文件     | sniff 窗口内出现 NUL 字节则为 `true`              |
 | `category`  | 仅文件     | `mime_hint`：`text`\|`image`\|`audio`\|`video`\|`archive`\|`binary`\|`data` |
-| `width`     | 仅图片     | 像素宽（`imagesize`）                             |
-| `height`    | 仅图片     | 像素高（`imagesize`）                             |
+| `width`     | 图片/视频  | 像素宽（`imagesize` / `mp4parse`）                |
+| `height`    | 图片/视频  | 像素高（`imagesize` / `mp4parse`）                |
 | `exif`      | 仅图片     | EXIF 标签→值 映射（`kamadak-exif`）；无则缺省     |
 | `pages`     | 仅 PDF     | 页数（`lopdf`）；加密/损坏 PDF 缺省               |
-| `duration_secs` | 仅音频 | 时长（秒，`lofty`）                          |
+| `duration_secs` | 音频/视频 | 时长（秒，`lofty` / `mp4parse`）              |
 | `tags`      | 仅音频     | artist/album/title/genre/year 映射（`lofty`）；无则缺省 |
 | `is_symlink`| 符号链接   | `false` 时省略                                     |
 
@@ -123,9 +123,9 @@ depth  size  kind  mime       encoding  mime_hint  dims     path
 
 ## 范围
 
-范围内：目录遍历（感知 .gitignore）、大小、mime 检测、文本编码检测、粗粒度类型提示、图片尺寸 + EXIF、PDF 页数、音频时长 + 标签、TSV + 表格 + JSON 输出。
+范围内：目录遍历（感知 .gitignore）、大小、mime 检测、文本编码检测、粗粒度类型提示、图片尺寸 + EXIF、PDF 页数、音频时长 + 标签、视频尺寸 + 时长、TSV + 表格 + JSON 输出。
 
-范围外（未来）：视频尺寸/时长、Office 文档属性（#9 跟踪），网络和远程文件。路线图见 [docs/design.md](docs/design.md)。
+范围外（未来）：Office 文档属性（#9 跟踪）、mkv/webm 视频、网络和远程文件。路线图见 [docs/design.md](docs/design.md)。
 
 ## 许可证
 

@@ -100,11 +100,11 @@ Fields:
 | `encoding`   | text files     | from `chardetng`; absent for binary or empty files             |
 | `binary`     | files only     | `true` if a NUL byte is found in the sniff window              |
 | `category`   | files only     | `mime_hint`: `text` \| `image` \| `audio` \| `video` \| `archive` \| `binary` \| `data` |
-| `width`      | images         | pixel width (`imagesize`)                                      |
-| `height`     | images         | pixel height (`imagesize`)                                     |
+| `width`      | images, video  | pixel width (`imagesize` / `mp4parse`)                         |
+| `height`     | images, video  | pixel height (`imagesize` / `mp4parse`)                        |
 | `exif`       | images         | EXIF tag → value map (`kamadak-exif`); absent when none        |
 | `pages`      | PDFs           | page count (`lopdf`); absent for encrypted/malformed PDFs      |
-| `duration_secs` | audio      | duration in seconds (`lofty`)                              |
+| `duration_secs` | audio, video | duration in seconds (`lofty` / `mp4parse`)                  |
 | `tags`       | audio          | artist/album/title/genre/year map (`lofty`); absent when none |
 | `is_symlink` | symlinks       | omitted when `false`                                           |
 
@@ -123,9 +123,9 @@ Fields:
 
 ## Scope
 
-In scope: directory traversal (gitignore-aware), size, mime detection, text encoding detection, coarse category hint, image dimensions + EXIF, PDF page count, audio duration + tags, TSV + table + JSON output.
+In scope: directory traversal (gitignore-aware), size, mime detection, text encoding detection, coarse category hint, image dimensions + EXIF, PDF page count, audio duration + tags, video dimensions + duration, TSV + table + JSON output.
 
-Out of scope (future): video dimensions/duration, Office document properties (tracked in #9), network and remote files. See [docs/design.md](docs/design.md) for the roadmap.
+Out of scope (future): Office document properties (tracked in #9), mkv/webm video, network and remote files. See [docs/design.md](docs/design.md) for the roadmap.
 
 ## License
 
