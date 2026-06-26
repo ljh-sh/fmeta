@@ -53,6 +53,22 @@ pub struct FileMeta {
     /// Media tags (artist/album/title/…) for audio (`lofty`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tags: Option<BTreeMap<String, String>>,
+    /// Last-modified time, Unix epoch seconds (`fs::metadata`). Also the cache
+    /// key for fmeta's index DB (a file whose mtime is unchanged is reused).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mtime: Option<i64>,
+    /// Creation (birth) time, Unix epoch seconds (`fs::metadata`). Absent on
+    /// filesystems that don't record birth time.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ctime: Option<i64>,
+    /// Column count for CSV/TSV (delimiter-separated first row). Naive count;
+    /// does not handle quoted delimiters.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub columns: Option<usize>,
+    /// Number of contained entries for archives (zip / tar / tar.gz) — and the
+    /// internal file count for Office docs (which are zip containers).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub entries: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, serde::Serialize, PartialEq, Eq)]
@@ -100,17 +116,28 @@ impl FileMeta {
             pages: None,
             duration_secs: None,
             tags: None,
+            mtime: None,
+            ctime: None,
+            columns: None,
+            entries: None,
         };
+
+        // mtime/ctime apply to every entry (files and dirs alike); fetch the
+        // metadata once. (Size + content detection below reuse this for files.)
+        if let Ok(m) = fs::metadata(path) {
+            meta.mtime = epoch(m.modified());
+            meta.ctime = epoch(m.created());
+            if kind == EntryKind::File {
+                meta.size = Some(m.len());
+            }
+        }
 
         if paths_only || kind != EntryKind::File {
             return meta;
         }
 
-        // Size: prefer metadata; fall back to None if unreadable.
-        meta.size = fs::metadata(path).map(|m| m.len()).ok();
-
         // Sniff content for mime + encoding. Files we cannot open get no
-        // content metadata (size may still be present).
+        // content metadata (size/mtime may still be present from the stat above).
         let Ok(mut f) = fs::File::open(path) else {
             return meta;
         };
@@ -154,6 +181,12 @@ impl FileMeta {
             meta.exif = extract_exif(&buf);
         }
 
+        // CSV/TSV column count: extension-based (no magic signature). Sniff-
+        // bounded, so always-on (not a deep extractor).
+        if meta.columns.is_none() {
+            meta.columns = csv_columns(path, &buf);
+        }
+
         // Whole-file ("deep") extractors: these read beyond the sniff buffer, so
         // they only run when not in --fast mode. `--fast` keeps the walk bounded
         // to the sniff read; the default (deep) trades IO for rich metadata.
@@ -186,6 +219,25 @@ impl FileMeta {
                     meta.height = Some(h);
                     meta.duration_secs = secs;
                 }
+            }
+            // Office Open XML (docx/xlsx/pptx): ZIP containers whose
+            // docProps/core.xml holds Dublin Core properties. Extension-based
+            // (infer reports them as application/zip).
+            if meta.tags.is_none() {
+                if let Some(tags) = office_meta(path) {
+                    meta.tags = Some(tags);
+                }
+            }
+            // EPUB spine count (reading-order length, ≈ pages) — checked before
+            // the generic archive count so an .epub reports spine items, not the
+            // raw zip entry count. Reuses zip.
+            if meta.entries.is_none() {
+                meta.entries = epub_spine_count(path);
+            }
+            // Archive entry count (zip / tar / tar.gz); also the internal file
+            // count of Office docs (zip containers).
+            if meta.entries.is_none() {
+                meta.entries = archive_entries(path, mime.as_deref());
             }
         }
         meta
@@ -246,6 +298,142 @@ fn video_meta(path: &Path) -> Option<(u32, u32, Option<f64>)> {
     Some((width, height, secs))
 }
 
+/// Office Open XML core properties (docx/xlsx/pptx) via `zip`. The container's
+/// `docProps/core.xml` holds Dublin Core fields (title/author/created/modified).
+/// Extension-based: infer reports these files as `application/zip`.
+fn office_meta(path: &Path) -> Option<BTreeMap<String, String>> {
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())?;
+    if !matches!(ext.as_str(), "docx" | "xlsx" | "pptx") {
+        return None;
+    }
+    let mut za = zip::ZipArchive::new(fs::File::open(path).ok()?).ok()?;
+    let mut buf = Vec::new();
+    za.by_name("docProps/core.xml")
+        .ok()?
+        .read_to_end(&mut buf)
+        .ok()?;
+    let xml = String::from_utf8_lossy(&buf);
+    let mut tags = BTreeMap::new();
+    for (key, tag) in [
+        ("title", "dc:title"),
+        ("author", "dc:creator"),
+        ("created", "dcterms:created"),
+        ("modified", "dcterms:modified"),
+        ("last_modified_by", "cp:lastModifiedBy"),
+        ("language", "dc:language"),
+    ] {
+        if let Some(v) = xml_tag_text(&xml, tag) {
+            tags.insert(key.to_string(), v);
+        }
+    }
+    if tags.is_empty() {
+        None
+    } else {
+        Some(tags)
+    }
+}
+
+/// Extract the inner text of the first `<tag ...>text</tag>` occurrence. Naive
+/// but sufficient for the small, well-structured docProps/core.xml.
+fn xml_tag_text(xml: &str, tag: &str) -> Option<String> {
+    let start = xml.find(&format!("<{tag}"))?;
+    let after_open = xml[start..].find('>')? + start + 1;
+    let close = xml[after_open..].find('<')? + after_open;
+    let val = xml[after_open..close].trim();
+    if val.is_empty() {
+        None
+    } else {
+        Some(val.to_string())
+    }
+}
+
+/// Extract an attribute value from the first `<tag ... attr="value" ...>`
+/// occurrence (e.g. `full-path` on `<rootfile>` in EPUB container.xml).
+fn xml_attr(xml: &str, tag: &str, attr: &str) -> Option<String> {
+    let open = format!("<{tag}");
+    // Find `<tag` followed by a tag-name delimiter (space/>//tab/nl), so that
+    // `<rootfile` doesn't match `<rootfiles>`.
+    let mut search = 0;
+    let start = loop {
+        let s = xml[search..].find(&open)? + search;
+        let next = xml.as_bytes().get(s + open.len()).copied();
+        if matches!(next, Some(b' ' | b'>' | b'/' | b'\t' | b'\n')) {
+            break s;
+        }
+        search = s + open.len();
+    };
+    let end = xml[start..].find('>')? + start;
+    let slice = &xml[start..end];
+    let needle = format!("{attr}=\"");
+    let a = slice.find(&needle)? + needle.len();
+    let b = slice[a..].find('"')? + a;
+    Some(slice[a..b].to_string())
+}
+
+/// Read a zip entry into a buffer.
+fn zip_read(za: &mut zip::ZipArchive<fs::File>, name: &str) -> Option<Vec<u8>> {
+    let mut buf = Vec::new();
+    za.by_name(name).ok()?.read_to_end(&mut buf).ok()?;
+    Some(buf)
+}
+
+/// EPUB spine count (reading-order length, the closest thing EPUB has to a
+/// page count). Follows META-INF/container.xml → OPF `rootfile` → counts
+/// `<itemref>` in the OPF `<spine>`. Extension-based (.epub).
+fn epub_spine_count(path: &Path) -> Option<usize> {
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())?
+        .to_ascii_lowercase();
+    if ext != "epub" {
+        return None;
+    }
+    let mut za = zip::ZipArchive::new(fs::File::open(path).ok()?).ok()?;
+    let container =
+        String::from_utf8_lossy(&zip_read(&mut za, "META-INF/container.xml")?).into_owned();
+    let opf_path = xml_attr(&container, "rootfile", "full-path")?;
+    let opf = String::from_utf8_lossy(&zip_read(&mut za, &opf_path)?).into_owned();
+    Some(opf.matches("<itemref").count())
+}
+
+/// Number of contained entries for an archive: zip (`za.len()`), tar, or
+/// tar.gz (gunzipped then counted). Returns None for other/unparseable.
+fn archive_entries(path: &Path, mime: Option<&str>) -> Option<usize> {
+    match mime {
+        Some("application/zip") => {
+            Some(zip::ZipArchive::new(fs::File::open(path).ok()?).ok()?.len())
+        }
+        Some("application/x-tar") => tar_entries(path, false),
+        Some("application/gzip") if is_tar_gz(path) => tar_entries(path, true),
+        _ => None,
+    }
+}
+
+fn is_tar_gz(path: &Path) -> bool {
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .map(|n| n.to_ascii_lowercase())
+        .unwrap_or_default();
+    name.ends_with(".tar.gz") || name.ends_with(".tgz")
+}
+
+/// Count entries in a (optionally gzipped) tar archive.
+fn tar_entries(path: &Path, gz: bool) -> Option<usize> {
+    let file = fs::File::open(path).ok()?;
+    let reader: Box<dyn std::io::Read> = if gz {
+        Box::new(flate2::read::GzDecoder::new(file))
+    } else {
+        Box::new(file)
+    };
+    let mut archive = tar::Archive::new(reader);
+    let entries = archive.entries().ok()?;
+    Some(entries.filter_map(Result::ok).count())
+}
+
 /// Count pages in a PDF via `lopdf`. Returns None for encrypted or malformed
 /// PDFs (best-effort, like EXIF).
 fn pdf_page_count(path: &Path) -> Option<u32> {
@@ -256,6 +444,37 @@ fn pdf_page_count(path: &Path) -> Option<u32> {
     } else {
         Some(count)
     }
+}
+
+/// Convert a `SystemTime` from `fs::metadata` to Unix epoch seconds. None for
+/// times before the epoch or when the filesystem reports none.
+fn epoch(t: std::io::Result<std::time::SystemTime>) -> Option<i64> {
+    let t = t.ok()?;
+    match t.duration_since(std::time::UNIX_EPOCH) {
+        Ok(d) => Some(d.as_secs() as i64),
+        Err(e) => Some(-(e.duration().as_secs() as i64)),
+    }
+}
+
+/// Column count for `.csv`/`.tsv` files: count delimiter-separated fields in
+/// the first line of the sniff buffer. Naive — does not handle quoted
+/// delimiters. Returns None for other extensions or empty files.
+fn csv_columns(path: &Path, buf: &[u8]) -> Option<usize> {
+    let sep: u8 = match path
+        .extension()
+        .and_then(|e| e.to_str())?
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "csv" => b',',
+        "tsv" => b'\t',
+        _ => return None,
+    };
+    let first_line = buf
+        .split(|&b| b == b'\n')
+        .next()
+        .filter(|l| !l.is_empty())?;
+    Some(first_line.iter().filter(|&&b| b == sep).count() + 1)
 }
 
 /// Pixel dimensions from the sniff buffer via `imagesize`. Returns None for
