@@ -348,6 +348,23 @@ fn epub_spine_and_csv_columns() {
     assert_eq!(csv.columns, Some(3), "csv columns = 3");
 }
 
+/// SQLite user-table count via rusqlite (read-only).
+#[test]
+fn sqlite_tables() {
+    let tmp = tempfile_dir();
+    let root = tmp.join("root");
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("sample.db"), include_bytes!("fixtures/sample.db")).unwrap();
+
+    let metas = collect(&root);
+    let db = metas
+        .iter()
+        .find(|m| m.path.ends_with("sample.db"))
+        .expect("sample.db");
+    assert_eq!(db.mime.as_deref(), Some("application/vnd.sqlite3"));
+    assert_eq!(db.tables, Some(2));
+}
+
 fn tempfile_dir() -> std::path::PathBuf {
     // Avoid pulling in the `tempfile` crate; use a process-unique dir.
     let dir = std::env::temp_dir().join(format!(
