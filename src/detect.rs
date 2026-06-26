@@ -61,6 +61,10 @@ pub struct FileMeta {
     /// filesystems that don't record birth time.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ctime: Option<i64>,
+    /// Column count for CSV/TSV (delimiter-separated first row). Naive count;
+    /// does not handle quoted delimiters.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub columns: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, serde::Serialize, PartialEq, Eq)]
@@ -110,6 +114,7 @@ impl FileMeta {
             tags: None,
             mtime: None,
             ctime: None,
+            columns: None,
         };
 
         // mtime/ctime apply to every entry (files and dirs alike); fetch the
@@ -169,6 +174,12 @@ impl FileMeta {
                 meta.height = Some(h);
             }
             meta.exif = extract_exif(&buf);
+        }
+
+        // CSV/TSV column count: extension-based (no magic signature). Sniff-
+        // bounded, so always-on (not a deep extractor).
+        if meta.columns.is_none() {
+            meta.columns = csv_columns(path, &buf);
         }
 
         // Whole-file ("deep") extractors: these read beyond the sniff buffer, so
@@ -283,6 +294,27 @@ fn epoch(t: std::io::Result<std::time::SystemTime>) -> Option<i64> {
         Ok(d) => Some(d.as_secs() as i64),
         Err(e) => Some(-(e.duration().as_secs() as i64)),
     }
+}
+
+/// Column count for `.csv`/`.tsv` files: count delimiter-separated fields in
+/// the first line of the sniff buffer. Naive — does not handle quoted
+/// delimiters. Returns None for other extensions or empty files.
+fn csv_columns(path: &Path, buf: &[u8]) -> Option<usize> {
+    let sep: u8 = match path
+        .extension()
+        .and_then(|e| e.to_str())?
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "csv" => b',',
+        "tsv" => b'\t',
+        _ => return None,
+    };
+    let first_line = buf
+        .split(|&b| b == b'\n')
+        .next()
+        .filter(|l| !l.is_empty())?;
+    Some(first_line.iter().filter(|&&b| b == sep).count() + 1)
 }
 
 /// Pixel dimensions from the sniff buffer via `imagesize`. Returns None for
