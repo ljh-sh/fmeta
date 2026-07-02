@@ -23,7 +23,7 @@ ignore = "0.4"
 imagesize = "0.14.0"
 infer = "0.19.0"
 kamadak-exif = "0.6.1"
-lofty = "0.22.2"
+lofty = "0.24.0"
 lopdf = "0.42"
 mp4parse = "0.17.0"
 rusqlite = { version = "=0.32.1", features = ["bundled"] }
